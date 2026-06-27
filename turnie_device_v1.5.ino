@@ -17,7 +17,7 @@
 //   BLE "settings" JSON で書き換え可能
 // ============================================================
 uint16_t MOTION_HUE       = 104; // 色相 0–360（度）。turnie4=104 (黄)
-uint8_t MOTION_BRIGHTNESS = 50;
+uint8_t MOTION_BRIGHTNESS = 50;  // 内部はハードウェア値 0–255（setting.json の 0–100 から変換）
 uint8_t MOTION_ANIM       = 0;   // 0=Ripple / 1=DiagonalWave
 char    DEVICE_NAME[DEVICE_NAME_MAX] = {};  // 起動時に BLE_DEVICE_NAME で初期化
 

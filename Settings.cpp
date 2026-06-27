@@ -31,7 +31,11 @@ bool loadFromStorage(bool updateGattName) {
         MOTION_HUE = (uint16_t)hue;
     }
     if (!settingsDoc["brightness"].isNull()) {
-        MOTION_BRIGHTNESS = (uint8_t)settingsDoc["brightness"].as<int>();
+        // setting.json の brightness は 0–100。ハードウェアは 0–255 なので変換する。
+        int b = settingsDoc["brightness"].as<int>();
+        if (b < 0)   b = 0;
+        if (b > 100) b = 100;
+        MOTION_BRIGHTNESS = (uint8_t)(b * 255 / 100);
         Display::setBrightness(MOTION_BRIGHTNESS);
     }
     if (!settingsDoc["motion"].isNull()) {

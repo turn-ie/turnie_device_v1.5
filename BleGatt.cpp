@@ -118,7 +118,8 @@ void tick() {
                     JsonDocument outDoc;
                     outDoc["flag"]       = "settings";
                     outDoc["hue"]        = settingsDoc["hue"] | MOTION_HUE;
-                    outDoc["brightness"] = settingsDoc["brightness"] | MOTION_BRIGHTNESS;
+                    // setting.json の brightness は 0–100。未指定時は内部値(0–255)を 0–100 へ戻す。
+                    outDoc["brightness"] = settingsDoc["brightness"] | (int)(MOTION_BRIGHTNESS * 100 / 255);
                     if (!settingsDoc["motion"].isNull()) {
                         outDoc["motion"] = settingsDoc["motion"];
                     } else {
