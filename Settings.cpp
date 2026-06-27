@@ -1,0 +1,68 @@
+#include "Settings.h"
+
+#include "Animations.h"
+#include "BleBroadcast.h"
+#include "Config.h"
+#include "Display.h"
+#include "Storage.h"
+
+#include <ArduinoJson.h>
+
+namespace Settings {
+
+bool loadFromStorage(bool updateGattName) {
+    String settingJson = Storage::loadJson(SD_SETTING_JSON);
+    if (settingJson.isEmpty()) {
+        return false;
+    }
+
+    JsonDocument settingsDoc;
+    DeserializationError err = deserializeJson(settingsDoc, settingJson);
+    if (err != DeserializationError::Ok) {
+        Serial.println("  [Settings] failed to parse setting.json");
+        return false;
+    }
+
+    if (!settingsDoc["hue"].isNull()) {
+        // 色相は 0–360（度）。範囲外はクランプする。
+        int hue = settingsDoc["hue"].as<int>();
+        if (hue < 0)   hue = 0;
+        if (hue > 360) hue = 360;
+        MOTION_HUE = (uint16_t)hue;
+    }
+    if (!settingsDoc["brightness"].isNull()) {
+        MOTION_BRIGHTNESS = (uint8_t)settingsDoc["brightness"].as<int>();
+        Display::setBrightness(MOTION_BRIGHTNESS);
+    }
+    if (!settingsDoc["motion"].isNull()) {
+        if (settingsDoc["motion"].is<const char*>()) {
+            String motion = settingsDoc["motion"].as<String>();
+            if (motion == "1") {
+                MOTION_ANIM = 1;
+            } else if (motion == "0") {
+                MOTION_ANIM = 0;
+            } else {
+                MOTION_ANIM = Animations::motionStringToEnum(motion);
+            }
+        } else {
+            MOTION_ANIM = (uint8_t)settingsDoc["motion"].as<int>();
+        }
+    }
+    if (!settingsDoc["name"].isNull()) {
+        String name = settingsDoc["name"].as<String>();
+        strncpy(DEVICE_NAME, name.c_str(), DEVICE_NAME_MAX - 1);
+        DEVICE_NAME[DEVICE_NAME_MAX - 1] = '\0';
+        if (updateGattName) {
+            BleBroadcast::updateGattName();
+        }
+    }
+
+    Serial.printf("  [Settings] loaded: hue=%d brightness=%d motion=%s name=%s\n",
+                  MOTION_HUE,
+                  MOTION_BRIGHTNESS,
+                  Animations::motionEnumToString(MOTION_ANIM).c_str(),
+                  DEVICE_NAME);
+    return true;
+}
+
+} // namespace Settings
