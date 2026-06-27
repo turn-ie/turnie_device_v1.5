@@ -129,8 +129,7 @@ void tick() {
                     serializeJson(outDoc, settingsJson);
                     if (Storage::saveJson(SD_SETTING_JSON, settingsJson)) {
                         Serial.println("  [BleGatt] saved settings to SD: " + settingsJson);
-                        // ripple の前に setting.json を読み込み直して MOTION_HUE 等を
-                        // 反映する。こうすると ripple が新しい設定色で再生される。
+                        // ripple の前に設定を反映 → 新しい設定色で ripple が再生される
                         Settings::loadFromStorage(true);
                         Animations::startRipple();
                         Display::clear();
@@ -146,18 +145,14 @@ void tick() {
     Content::Data content;
     if (!Content::parse(data, content)) return;
 
-    // 自分のコンテンツとして更新する（メモリ + SD の両方を更新）
+    // 自分のコンテンツとして更新（メモリ + SD）
     Content::saveOwn(content);
     Serial.println("  [BleGatt] saved as own content");
 
-    // 待機画面（流体）の「自分の粒(index 0)」の色を新しいコンテンツに更新する。
-    //   これをしないと、プレビュー表示後に待機へ戻ったとき粒の色が古いままになる。
+    // 待機（流体）の自分の粒(index 0)の色を更新（戻ったとき古い色にならないように）
     Fluid::syncFromInbox();
 
-    // スマホ書き込み直後のプレビュー：
-    //   画像・テキストとも PHONE_WRITE_PREVIEW_MS だけ表示し、その後
-    //   Display::tick() が自動消灯して待機（流体）へ戻る。
-    //   テキストはその間ループスクロールさせる。
+    // プレビュー：画像・文字とも PHONE_WRITE_PREVIEW_MS だけ表示し、自動で待機へ戻る
     if (content.kind == Content::Kind::Text) {
         Display::showText(content.text.c_str(), TEXT_SCROLL_DELAY_MS, true,
                           0xFFFF, PHONE_WRITE_PREVIEW_MS);

@@ -55,10 +55,8 @@ namespace Display {
     namespace Internal {
         Adafruit_NeoMatrix& matrix();
 
-        // 論理 RGB をこのパネル用の 16bit カラーに変換する。
-        // このパネルは R と G が物理的に入れ替わっているため、ここで
-        // 一括して入れ替える。色順を直したいときはこの 1 関数だけ直せばよい
-        // （画像・塗りつぶし・流体・アニメすべてがここを通る）。
+        // 論理 RGB → このパネル用 16bit カラー。R↔G の物理スワップ補正を
+        // ここ 1 か所に集約（画像・塗りつぶし・流体・アニメすべてがここを通る）。
         uint16_t color(uint8_t r, uint8_t g, uint8_t b);
     }
 }

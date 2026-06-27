@@ -21,12 +21,7 @@ uint8_t MOTION_BRIGHTNESS = 50;
 uint8_t MOTION_ANIM       = 0;   // 0=Ripple / 1=DiagonalWave
 char    DEVICE_NAME[DEVICE_NAME_MAX] = {};  // 起動時に BLE_DEVICE_NAME で初期化
 
-// ---------------------------------------------------------
-// 受信メッセージのキュー
-//   BT タスクから直接 Display や Animations を触ると
-//   タスク競合で誤動作するため、フラグだけ立てて
-//   メインタスク（loop）側で処理する
-// ---------------------------------------------------------
+// 受信メッセージのキュー（BTタスクはフラグだけ立て、loop側で処理してタスク競合を避ける）
 static String        receivedRawJson      = "";
 static unsigned long g_lastRxTime         = 0;
 static String        g_lastSavedJson      = ""; // 直前に inbox へ保存した内容（30秒の重複保存ガード用）
@@ -36,21 +31,12 @@ static bool          g_needReply          = false;
 static Content::Data parsedContent;
 static bool          showContentAfterAnim = false;
 
-// ---------------------------------------------------------
-// 受信履歴の閲覧モード（USER ボタン）
-//   長押しで開始/終了（DiagonalWave 演出）、一回押しで次の履歴へ。
-//   無操作が BROWSE_TIMEOUT_MS 続いたら自動で通常フローへ戻る。
-// ---------------------------------------------------------
+// 受信履歴の閲覧モード（USER長押しで開始/終了、短押しで次へ、無操作BROWSE_TIMEOUT_MSで通常へ）
 static bool          g_browseMode        = false;
 static int           g_browseIndex       = 0;     // Inbox の index（0=最古, size-1=最新）
 static unsigned long g_browseLastActive  = 0;     // 最後にボタン操作した時刻
 
-// ---------------------------------------------------------
-// 待機画面のピクチャ確認モード（USER ボタン短押し）
-//   待機中は流体シミュレーションを表示する。USER ボタンを短押しすると
-//   自分の設定したピクチャを表示して確認できる。もう一度短押しするか、
-//   PREVIEW_TIMEOUT_MS 無操作が続くと自動的に流体表示へ戻る。
-// ---------------------------------------------------------
+// ピクチャ確認モード（USER短押しで自分のピクチャ表示。再短押し or タイムアウトで流体へ）
 static const unsigned long PREVIEW_TIMEOUT_MS = 10000;  // 10 秒で流体へ自動復帰
 static bool          g_previewMode       = false;
 static unsigned long g_previewUntil      = 0;
@@ -181,22 +167,15 @@ void onMessageReceived(const uint8_t* data, size_t len) {
         Serial.println("  [RX] received unknown: " + json);
     }
 
-    // 受信クールダウン：一度受信を処理したら、RX_IGNORE_MS の間は
-    //   内容に関わらず後続の受信を全て無視する。
-    //   近接中は同一広告が高頻度で連続して届くため、これをしないと
-    //   ripple 連発・inbox の重複保存・返信の嵐が起きてバグったように見える。
-    //   相手が離れて RX_IGNORE_MS 以上経てば、次の接触をまた1回だけ受け付ける。
-    //   （g_lastRxTime はクールダウン中の無視パケットでは更新しない＝固定時間で復帰する）
+    // 受信クールダウン：一度処理したら RX_IGNORE_MS の間は後続を全て無視する。
+    //   （近接中は同一広告が連続して届くため。ripple連発・重複保存・返信の嵐を防ぐ）
     if (g_lastRxTime != 0 && (millis() - g_lastRxTime < RX_IGNORE_MS)) {
         return; // クールダウン中：完全に無視
     }
     g_lastRxTime = millis();
 
-    // ここに来るのはクールダウン明けの「1発目」だけ。
-    // 同一内容の 5 分リジェクト：
-    //   直前に受け付けたのと同じ内容が RX_SAME_REJECT_MS（5分）以内に届いた場合は、
-    //   完全にリジェクトする（表示も保存も返信もしない）。
-    //   5 分を超えていれば、同じ内容でも改めて受け付ける。
+    // 同一内容の 5 分リジェクト：直前と同じ内容が RX_SAME_REJECT_MS 以内なら
+    //   完全に拒否（表示も保存も返信もしない）。超えていれば改めて受け付ける。
     if (json == g_lastSavedJson
         && g_lastSavedTime != 0
         && (millis() - g_lastSavedTime < RX_SAME_REJECT_MS)) {
@@ -262,8 +241,7 @@ void setup() {
 // loop: 繰り返し実行される
 // ---------------------------------------------------------
 void loop() {
-    // setting.json の内容を 5 秒ごとにシリアルへ出力（デバッグ用）。
-    //   どのモードでも必ず動くよう loop() の先頭で処理する。
+    // setting.json の内容を 5 秒ごとにシリアル出力（デバッグ用。先頭=全モードで動く）
     static unsigned long lastSettingDump = 0;
     if (millis() - lastSettingDump >= 5000) {
         lastSettingDump = millis();

@@ -213,18 +213,14 @@ static void representativeColor(const Content::Data &d, uint8_t &r, uint8_t &g, 
     motionColorRgb(r, g, b);
 }
 
-// フェードインの速さ（1フレームあたりの増分。大きいほど速く出現）
-//   待機ループは約16ms周期なので、0.04 ≒ 約0.4秒で出現。
+// 粒のフェードイン速度（1フレームの増分。16ms周期で 0.04≒約0.4秒）
 static const float FADE_RATE = 0.04f;
 
-// 待機（流体）へ戻った瞬間の「画面全体」フェードイン。
-//   tick() が FLUID_RESUME_GAP_MS 以上呼ばれていなかった＝その間プレビューや
-//   受信表示・ripple 等で何かを表示していた、とみなして毎回フェードインさせる。
-//   これで「通常状態へ戻るときは必ずフェードイン」を全パス共通で実現する。
-static const unsigned long FLUID_RESUME_GAP_MS = 80;    // この時間以上空いたら再フェード
+// 待機へ戻った瞬間（tick が FLUID_RESUME_GAP_MS 以上途切れていた）に画面全体をフェードイン
+static const unsigned long FLUID_RESUME_GAP_MS = 80;
 static const float         SCREEN_FADE_RATE    = 0.06f; // 1フレーム増分（約0.27秒で全開）
 static unsigned long       g_lastTickMs        = 0;
-static float               g_screenFade        = 1.0f;  // 0→1。1=通常（フェード無し）
+static float               g_screenFade        = 1.0f;  // 0→1（1=フェード無し）
 
 // 新しい粒をランダムな位置に置き、フェードイン（pFade=0 から）で出現させる。
 static void spawnParticle(int i) {
@@ -391,10 +387,8 @@ static void updateParticles(Vec2 a) {
     }
 }
 
-// バイリニアの「にじみ（広がり）」を抑える。
-//   小数位置を最寄りセル側へ寄せて、隣セルへ漏れる明るさを減らす。
-//   1.0 で従来のリニア、大きいほど 1LED に集中する（補間自体は残るので
-//   サブピクセルの滑らかさは保たれる）。
+// バイリニアのにじみ低減：小数位置を最寄りセルへ寄せる。
+//   1.0=リニア、大きいほど1LEDに集中（補間は残るので滑らかさは保たれる）。
 static const float SPLAT_SHARPNESS = 2.4f;
 static float splatSharpen(float t) {
     if (t <= 0.0f) return 0.0f;
@@ -481,8 +475,7 @@ static void render() {
 }
 
 void tick() {
-    // 画面全体のフェードイン：待機へ戻った最初のフレーム（前回 tick から時間が
-    // 空いている＝何かを表示していた）なら 0 から再スタートし、毎フレーム上げていく。
+    // 画面全体のフェードイン：tick が途切れていた＝待機へ戻った直後なら 0 から再開する
     unsigned long now = millis();
     if (now - g_lastTickMs > FLUID_RESUME_GAP_MS) {
         g_screenFade = 0.0f;
