@@ -60,12 +60,18 @@ bool loadFromStorage(bool updateGattName) {
             BleBroadcast::updateGattName();
         }
     }
+    if (!settingsDoc["hometown"].isNull()) {
+        String hometown = settingsDoc["hometown"].as<String>();
+        strncpy(HOMETOWN, hometown.c_str(), HOMETOWN_MAX - 1);
+        HOMETOWN[HOMETOWN_MAX - 1] = '\0';
+    }
 
-    Serial.printf("  [Settings] loaded: hue=%d brightness=%d motion=%s name=%s\n",
+    Serial.printf("  [Settings] loaded: hue=%d brightness=%d motion=%s name=%s hometown=%s\n",
                   MOTION_HUE,
                   MOTION_BRIGHTNESS,
                   Animations::motionEnumToString(MOTION_ANIM).c_str(),
-                  DEVICE_NAME);
+                  DEVICE_NAME,
+                  HOMETOWN);
     return true;
 }
 

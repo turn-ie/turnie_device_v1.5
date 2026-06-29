@@ -430,13 +430,18 @@ void sendImageRgb(const uint8_t *rgb, int rgbLen) {
 }
 
 void restartGattAdv() {
-  // 電話が切断した後に handle 1 の connectable 広告を再開する
+  // handle 1 の connectable 広告を（再）開始する。
+  // 切断時の再開と、未接続中のウォッチドッグ再アサートの両方から呼ばれる。
+  // 既に広告中なら no-op 相当。失敗時のみログを出す（成功時は無音 = ログ汚染防止）。
   esp_ble_gap_ext_adv_t advCfg;
   advCfg.instance = BLE_GATT_ADV_HANDLE;
   advCfg.duration = 0;
   advCfg.max_events = 0;
-  esp_ble_gap_ext_adv_start(1, &advCfg);
-  Serial.println("  [BleBroadcast] GATT advertising restarted");
+  esp_err_t err = esp_ble_gap_ext_adv_start(1, &advCfg);
+  if (err != ESP_OK) {
+    Serial.println("  [BleBroadcast] GATT adv restart failed: " +
+                   String(esp_err_to_name(err)));
+  }
 }
 
 void updateGattName() {

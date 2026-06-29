@@ -17,9 +17,10 @@
 //   BLE "settings" JSON で書き換え可能
 // ============================================================
 uint16_t MOTION_HUE       = 104; // 色相 0–360（度）。turnie4=104 (黄)
-uint8_t MOTION_BRIGHTNESS = 50;  // 内部はハードウェア値 0–255（setting.json の 0–100 から変換）
+uint8_t MOTION_BRIGHTNESS = DEFAULT_MOTION_BRIGHTNESS;  // 内部はハードウェア値 0–255（setting.json の 0–100 から変換）
 uint8_t MOTION_ANIM       = 0;   // 0=Ripple / 1=DiagonalWave
 char    DEVICE_NAME[DEVICE_NAME_MAX] = {};  // 起動時に BLE_DEVICE_NAME で初期化
+char    HOMETOWN[HOMETOWN_MAX]       = {};  // 出身地（setting.json の hometown）
 
 // 受信メッセージのキュー（BTタスクはフラグだけ立て、loop側で処理してタスク競合を避ける）
 static String        receivedRawJson      = "";
@@ -261,8 +262,8 @@ void loop() {
         if (bootPressedAt == 0) {
             bootPressedAt = millis();
             resetTriggered = false;
-        } else if (!resetTriggered && (millis() - bootPressedAt >= 5000)) {
-            // 5秒間長押し：すべてのJSONデータをリセット
+        } else if (!resetTriggered && (millis() - bootPressedAt >= BOOT_RESET_LONG_PRESS_MS)) {
+            // BOOT長押し：すべてのJSONデータをリセット
             resetTriggered = true;
 
             // 紫で2秒点灯
@@ -275,11 +276,12 @@ void loop() {
 
             // インメモリの変数も初期化
             MOTION_HUE        = 104; // デフォルト (黄, 色相0–360)
-            MOTION_BRIGHTNESS = 50;
+            MOTION_BRIGHTNESS = DEFAULT_MOTION_BRIGHTNESS;
             Display::setBrightness(MOTION_BRIGHTNESS); // HWマトリクスへ即時反映
             MOTION_ANIM       = 0;
             strncpy(DEVICE_NAME, BLE_DEVICE_NAME, DEVICE_NAME_MAX - 1);
             DEVICE_NAME[DEVICE_NAME_MAX - 1] = '\0';
+            HOMETOWN[0]       = '\0'; // 出身地もクリア
             g_lastSavedJson   = ""; // 重複保存ガードのキャッシュもクリア
             g_lastSavedTime   = 0;
 

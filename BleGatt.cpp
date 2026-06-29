@@ -22,6 +22,58 @@ static String             g_pendingData = "";
 static bool               g_pendingReady  = false;
 static bool               g_pendingIsJson = false;  // true=JSON / false=テキスト直接表示
 static constexpr unsigned long PHONE_WRITE_PREVIEW_MS = 3000;
+static constexpr size_t GATT_NOTIFY_CHUNK_BYTES = 20;
+
+// スマホ探索用 GATT 広告（handle 1）の自己回復ウォッチドッグ。
+// 接続時に広告は自動停止するため、未接続の間は定期的に広告を再アサートして
+// 「切断後の再開が失敗したまま探索不能になる」状態を自動復旧させる。
+static volatile bool      g_phoneConnected = false;
+static constexpr unsigned long GATT_ADV_WATCHDOG_MS = 3000;
+
+static bool notifyText(const String& message) {
+    if (g_pTxChar == nullptr || message.isEmpty()) return false;
+
+    for (size_t offset = 0; offset < message.length(); offset += GATT_NOTIFY_CHUNK_BYTES) {
+        String chunk = message.substring(offset, offset + GATT_NOTIFY_CHUNK_BYTES);
+        g_pTxChar->setValue(chunk.c_str());
+        g_pTxChar->notify();
+        delay(10);
+    }
+    return true;
+}
+
+static int brightnessPercentFromHardware(uint8_t brightness) {
+    return ((int)brightness * 100 + 127) / 255;
+}
+
+static String buildSettingsJson() {
+    String settingsJson = Storage::loadJson(SD_SETTING_JSON);
+    if (!settingsJson.isEmpty()) {
+        JsonDocument doc;
+        if (deserializeJson(doc, settingsJson) == DeserializationError::Ok) {
+            return settingsJson;
+        }
+        Serial.println("  [BleGatt] setting.json is invalid, sending current settings");
+    }
+
+    JsonDocument doc;
+    doc["flag"]       = "settings";
+    doc["hue"]        = MOTION_HUE;
+    doc["brightness"] = brightnessPercentFromHardware(MOTION_BRIGHTNESS);
+    doc["motion"]     = Animations::motionEnumToString(MOTION_ANIM);
+    doc["name"]       = DEVICE_NAME[0] ? DEVICE_NAME : BLE_DEVICE_NAME;
+    doc["hometown"]   = HOMETOWN;
+
+    String out;
+    serializeJson(doc, out);
+    return out;
+}
+
+static bool sendSettingsToPhone() {
+    String settingsJson = buildSettingsJson();
+    Serial.println("  [BleGatt] sending settings: " + settingsJson);
+    return notifyText(settingsJson);
+}
 
 // ============================================================
 // 受信コールバック
@@ -42,14 +94,6 @@ class WriteCallback : public BLECharacteristicCallbacks {
             g_pendingReady  = true;
             buffer          = "";
             Serial.println("  [BleGatt] JSON received: " + g_pendingData);
-            sendAck("saved");
-        }
-    }
-
-    void sendAck(const char* msg) {
-        if (g_pTxChar != nullptr) {
-            g_pTxChar->setValue(msg);
-            g_pTxChar->notify();
         }
     }
 };
@@ -59,10 +103,14 @@ class WriteCallback : public BLECharacteristicCallbacks {
 // ============================================================
 class ServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) override {
+        g_phoneConnected = true;
         Serial.println("  [BleGatt] phone connected");
     }
 
     void onDisconnect(BLEServer* pServer) override {
+        // 即時再開はベストエフォート（コールバック文脈なので失敗しうる）。
+        // 失敗しても tick() のウォッチドッグが未接続を検知して再アサートする。
+        g_phoneConnected = false;
         Serial.println("  [BleGatt] phone disconnected. restarting advertising...");
         BleBroadcast::restartGattAdv();
     }
@@ -100,6 +148,18 @@ bool init() {
 }
 
 void tick() {
+    // --- GATT 広告ウォッチドッグ ---
+    // 未接続なのに広告が止まっている（切断時の再開失敗など）と探索不能になるため、
+    // 未接続の間は一定間隔で handle 1 の広告を再アサートして自動復旧させる。
+    {
+        static unsigned long lastAdvCheck = 0;
+        unsigned long now = millis();
+        if (!g_phoneConnected && now - lastAdvCheck >= GATT_ADV_WATCHDOG_MS) {
+            lastAdvCheck = now;
+            BleBroadcast::restartGattAdv();
+        }
+    }
+
     if (!g_pendingReady) return;
 
     String data    = g_pendingData;
@@ -112,28 +172,23 @@ void tick() {
         JsonDocument settingsDoc;
         if (deserializeJson(settingsDoc, data) == DeserializationError::Ok) {
             String flag = settingsDoc["flag"] | "";
+            if (flag == "get_settings") {
+                sendSettingsToPhone();
+                return;
+            }
             if (flag == "settings") {
-                // 設定を SD (setting.json) に保存する
+                // スマホから送られてきた settings の内容を丸ごと SD (setting.json) に保存する。
+                // hue / brightness / name / hometown など、含まれる項目をそのまま保持する。
                 {
-                    JsonDocument outDoc;
-                    outDoc["flag"]       = "settings";
-                    outDoc["hue"]        = settingsDoc["hue"] | MOTION_HUE;
-                    // setting.json の brightness は 0–100。未指定時は内部値(0–255)を 0–100 へ戻す。
-                    outDoc["brightness"] = settingsDoc["brightness"] | (int)(MOTION_BRIGHTNESS * 100 / 255);
-                    if (!settingsDoc["motion"].isNull()) {
-                        outDoc["motion"] = settingsDoc["motion"];
-                    } else {
-                        outDoc["motion"] = Animations::motionEnumToString(MOTION_ANIM);
-                    }
-                    outDoc["name"]       = settingsDoc["name"] | DEVICE_NAME;
                     String settingsJson;
-                    serializeJson(outDoc, settingsJson);
+                    serializeJson(settingsDoc, settingsJson);
                     if (Storage::saveJson(SD_SETTING_JSON, settingsJson)) {
                         Serial.println("  [BleGatt] saved settings to SD: " + settingsJson);
                         // ripple の前に設定を反映 → 新しい設定色で ripple が再生される
                         Settings::loadFromStorage(true);
                         Animations::startRipple();
                         Display::clear();
+                        notifyText("saved");
                     }
                 }
 
@@ -149,6 +204,7 @@ void tick() {
     // 自分のコンテンツとして更新（メモリ + SD）
     Content::saveOwn(content);
     Serial.println("  [BleGatt] saved as own content");
+    notifyText("saved");
 
     // 待機（流体）の自分の粒(index 0)の色を更新（戻ったとき古い色にならないように）
     Fluid::syncFromInbox();
