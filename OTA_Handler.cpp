@@ -27,6 +27,10 @@ void startDebugMode() {
       s_debugMode = true;
   Serial.println("\n=== OTA MODE ===");
 
+  // 表示の明るさはデバイス設定（MOTION_BRIGHTNESS = スマホ設定値）に合わせる。
+  //   fillColor は輝度を変えないため、ここで明示的に反映しておく。
+  Display::setBrightness(MOTION_BRIGHTNESS);
+
   Display::fillColor(255, 255, 0); // 黄色: WiFi 接続中
 
   // BLE を完全停止してから WiFi を起動（共存問題回避）

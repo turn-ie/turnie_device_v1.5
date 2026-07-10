@@ -168,6 +168,18 @@ void onMessageReceived(const uint8_t* data, size_t len) {
         Serial.println("  [RX] received unknown: " + json);
     }
 
+    // 空の tune は表示も保存もせず無視する。
+    //   tune 未設定のデバイスは名前だけのパケット（{"name":"..."}）を
+    //   広告し続けるため、Content::parse に失敗する。これを弾かないと
+    //   Inbox に溜まり、流体待機画面にモーション色の余計な粒が増えてしまう。
+    {
+        Content::Data rxCheck;
+        if (!Content::parse(json, rxCheck)) {
+            Serial.println("  [RX] empty/invalid tune -> ignored");
+            return;
+        }
+    }
+
     // 受信クールダウン：一度処理したら RX_IGNORE_MS の間は後続を全て無視する。
     //   （近接中は同一広告が連続して届くため。ripple連発・重複保存・返信の嵐を防ぐ）
     if (g_lastRxTime != 0 && (millis() - g_lastRxTime < RX_IGNORE_MS)) {
